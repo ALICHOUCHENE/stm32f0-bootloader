@@ -3,11 +3,11 @@
   * @file    xmodem.h
   * @brief   Header file for XMODEM transfer protocol.
   *          Contains constants, enums, typedefs, and API declarations for
-  *          implementing the XMODEM-CRC receiver.
+  *          implementing the XMODEM-CRC receiver on STM32.
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2025 IZITRON.
+  * Copyright (c) 2025 ALI CHOUCHENE.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -24,6 +24,15 @@
 #define XMODEM_DATA_CHUNK_SIZE 	128  // Number of bytes of actual data per packet
 #define XMODEM_CRC_LENGTH 		2    // Number of bytes used for CRC16 checksum
 #define XMODEM_HEADER_LENGTH 	3    // Number of bytes in the packet header
+
+// XMODEM protocol control characters
+#define XMODEM_SOH    0x01  // Start of Header: marks the beginning of a 128-byte data packet
+#define XMODEM_DLE    0x10  // Data Link Escape: mainly used for escaping control characters
+#define XMODEM_EOT    0x04  // End of Transmission: indicates the sender has finished sending the file
+#define XMODEM_ACK    0x06  // Acknowledge: sent by receiver to confirm a successfully received packet
+#define XMODEM_NACK   0x15  // Not Acknowledge: sent by receiver to request retransmission of a corrupted packet
+#define XMODEM_CAN    0x18  // Cancel: used to abort the transfer; typically requires two consecutive CAN bytes
+#define XMODEM_EOF    0x1A  // EOF: End Of File
 
 // XMODEM transfer result codes
 typedef enum {

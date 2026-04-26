@@ -5,7 +5,7 @@
  ******************************************************************************
  * @attention
  *
- * Copyright (c) 2025 IZITRON.
+ * Copyright (c) 2025 ALI CHOUCHENE.
  * All rights reserved.
  *
  * This software is licensed under terms that can be found in the LICENSE file
@@ -38,8 +38,35 @@
  * @param page_number Page index to write (0 to PAGE_COUNT - 1).
  * @param data Pointer to the buffer containing 32-bit words to be written.
  * @param len Number of 32-bit words to write (must not exceed PAGE_SIZE_WORD).
- * @return `true` if the write operation was successful, `false` otherwise.
+ *
+ * @return true if the write operation was successful, false otherwise.
  */
 bool flash_interface_write_page(uint8_t page_number, uint32_t* data, size_t len);
+
+/**
+ * @brief Moves the content of a flash memory page to another page.
+ *
+ * This function copies the data from the specified source flash page
+ * to the destination flash page.
+ *
+ * @param dst_page Destination page index where the data will be written.
+ * @param src_page Source page index from which the data will be read.
+ *
+ * @return true if the page move operation was successful, false otherwise.
+ */
+bool flash_interface_memory_move(uint8_t dst_page, uint8_t src_page);
+
+/**
+ * @brief Erases a specific flash memory page.
+ *
+ * This function erases the flash page identified by the given page index.
+ * After a successful erase operation, all bytes in the page are reset to
+ * the default erased state (typically 0xFF).
+ *
+ * @param page Page index to erase.
+ *
+ * @return true if the erase operation was successful, false otherwise.
+ */
+bool flash_interface_erase_page(uint8_t page);
 
 #endif
