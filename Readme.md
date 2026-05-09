@@ -215,9 +215,9 @@ _Vector_Table_Size = 0xC0;
 
 MEMORY
 {
-  BOOTLOADER  (rx)  : ORIGIN = 0x08000000, LENGTH = 40K
+  RAM         (xrw) : ORIGIN = 0x200000C0, LENGTH = 32K - _Vector_Table_Size
   FLASH       (rx)  : ORIGIN = 0x0800A000, LENGTH = 216K
-  RAM         (xrw) : ORIGIN = 0x200000C0, LENGTH = 32K - 0xC0
+  BOOTLOADER  (rx)  : ORIGIN = 0x08000000, LENGTH = 40K
 }
 ```
 
