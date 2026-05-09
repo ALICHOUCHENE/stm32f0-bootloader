@@ -26,9 +26,16 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32F0xx/Include
     ${PROJECT_SOURCE_DIR}/Drivers/STM32F0xx_HAL_Driver/Inc/Legacy
     ${PROJECT_SOURCE_DIR}/Drivers/STM32F0xx_HAL_Driver/Inc
+    ${PROJECT_SOURCE_DIR}/Crypto/Dsa/Inc
+    ${PROJECT_SOURCE_DIR}/Crypto/Libraries/Inc
     ${PROJECT_SOURCE_DIR}/Middleware/Inc
     ${PROJECT_SOURCE_DIR}/Core/Inc
 )
+
+# -------------------------------------------------------------------
+# CMake options
+# -------------------------------------------------------------------
+option(SECURITY_ENABLED "Enable security" OFF)
 
 # -------------------------------------------------------------------
 # Linker script
@@ -50,7 +57,6 @@ set(CMAKE_EXE_LINKER_FLAGS "-T${LINKER_SCRIPT} -Wl,--gc-sections --specs=nano.sp
 # -------------------------------------------------------------------
 set(CORE_SOURCES
     Core/Src/system_stm32f0xx.c
-    Core/Src/system.c
     Core/Src/sysmem.c
     Core/Src/syscalls.c
     Core/Src/bootloader.c
@@ -66,9 +72,15 @@ file(GLOB_RECURSE MIDDLEWARE_SOURCES
     ${PROJECT_SOURCE_DIR}/Middleware/Src/*.c
 )
 
+file(GLOB_RECURSE CRYPTO_DSA_SOURCES
+    ${PROJECT_SOURCE_DIR}/Crypto/Libraries/*.c
+    ${PROJECT_SOURCE_DIR}/Crypto/Dsa/Src/*.c
+)
+
 set(ALL_SOURCES
     ${CORE_SOURCES}
     ${DRIVERS_SOURCES}
+    ${CRYPTO_DSA_SOURCES}
     ${MIDDLEWARE_SOURCES}
 )
 
@@ -79,6 +91,9 @@ add_executable(bootloader ${ALL_SOURCES})
 
 # Define preprocessor macros for the target
 target_compile_definitions(bootloader PRIVATE STM32F030xC USE_HAL_DRIVER)
+if(SECURITY_ENABLED)
+    target_compile_definitions(bootloader PRIVATE SECURITY_ENABLED)
+endif()
 
 # Link ONLY the GCC support library (no libc, no startup)
 target_link_libraries(bootloader PRIVATE -lgcc)
