@@ -5,7 +5,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2025 IZITRON.
+  * Copyright (c) 2025 ALI CHOUCHENE.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file

@@ -42,6 +42,12 @@ static bool _flash_inetrface_erase_page(uint32_t paddress)
 
 static bool _flash_interface_write_to_page(uint32_t paddress, uint32_t* data, size_t len)
 {
+	// Check length size
+	if(!len) {
+		// Nothing to do
+		return false;
+	}
+
 	// Write word starting from the page address
 	for (int i = 0; i <= len - 1; i++) {
 		if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, paddress, *data) != HAL_OK) {
@@ -69,7 +75,13 @@ bool flash_interface_write_page(uint8_t page, uint32_t* data, size_t len)
 	uint32_t paddress;
 
 	// Check page number
-	if ((page > FLASH_TOTAL_PAGE_COUNT) || (page < 0)) {
+	if (page >= FLASH_TOTAL_PAGE_COUNT) {
+		return false;
+	}
+
+	// Check length size
+	if(!len) {
+		// Nothing to do
 		return false;
 	}
 
@@ -113,7 +125,7 @@ bool flash_interface_memory_move(uint8_t dst_page, uint8_t src_page)
 	uint32_t src_page_address;
 
 	// Check page number
-	if ((dst_page > FLASH_TOTAL_PAGE_COUNT) || (dst_page < 0)) {
+	if (dst_page >= FLASH_TOTAL_PAGE_COUNT) {
 		return false;
 	}
 
@@ -160,7 +172,7 @@ bool flash_interface_erase_page(uint8_t page)
 	uint32_t page_address;
 
 	// Check page number
-	if ((page > FLASH_TOTAL_PAGE_COUNT) || (page < 0)) {
+	if (page >= FLASH_TOTAL_PAGE_COUNT) {
 		return false;
 	}
 

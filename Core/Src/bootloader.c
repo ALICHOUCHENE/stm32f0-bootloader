@@ -286,7 +286,7 @@ static authentication_status_t _bootloader_verify_dsa_signature(bootloader_ctx_t
 	file_length -= sizeof(signed_file_footer_t);
 	if (signed_file_footer.file_length != file_length) {
 		// File length mismatch
-		return authentication_status_footer_not_found;
+		return authentication_status_file_length_mismatch;
 	}
 
 	// Check signature
