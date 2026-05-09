@@ -88,13 +88,13 @@ When built with `-DSECURITY_ENABLED=ON`, the bootloader **refuses to install any
 1. The host signing tool appends a **footer** to the firmware binary before transfer:
 
 ```
-┌───────────────────────────────────────────────────────┐
-│                  Firmware binary (N bytes)             │
-├──────────┬──────────────┬──────────────────────────────┤
+┌─────────────────────────────────────────────────────────┐
+│                  Firmware binary (N bytes)              │
+├──────────┬──────────────┬───────────────────────────────┤
 │  magic   │ file_length  │       Ed25519 signature       │
 │ 4 bytes  │   4 bytes    │         64 bytes              │
 │0x424F4F54│      N       │  over binary[0..N-1]          │
-└──────────┴──────────────┴──────────────────────────────┘
+└──────────┴──────────────┴───────────────────────────────┘
          ▲
    "BOOT" in ASCII — identifies the footer
 ```
@@ -382,4 +382,4 @@ STM32_Programmer_CLI -c port=SWD -w build/bootloader.bin 0x08000000 -v -rst
 
 ## License
 
-Copyright © 2025 Ali Chouchene. See `LICENSE` for details.
+Copyright © 2026 Ali Chouchene. See `LICENSE` for details.
