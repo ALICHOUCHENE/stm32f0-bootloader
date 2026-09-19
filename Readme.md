@@ -15,23 +15,19 @@ Built with **CMake** and the **STM32 HAL**, the project is designed to be readab
 4. [Bootloader Entry Logic](#bootloader-entry-logic)
 5. [CLI Commands](#cli-commands)
 6. [User Application Design](#user-application-design)
-7. [Signing the Application Binary](#signing-the-application-binary)
-8. [Build](#build)
-9. [Flashing the Bootloader](#flashing-the-bootloader)
-10. [Uploading a User Application](#uploading-a-user-application)
+7. [Build](#build)
+8. [Flashing the Bootloader](#flashing-the-bootloader)
+9. [Uploading a User Application](#uploading-a-user-application)
 
 ---
 
 ## Features
 
 - Targets **STM32F030CCTx** (Cortex-M0, 256 KB flash, 32 KB SRAM)
-- Fully **bare-metal** — no OS, no dynamic allocation
-- **XMODEM-CRC** firmware receive over UART
-- **Staging area** — incoming binary is buffered in flash before being promoted to the application area
+- Fully **bare-metal**
+- Simple UART **CLI**
+- **XMODEM-CRC** firmware transfer over UART
 - Optional **Ed25519 signature verification** (Monocypher) enabled at compile time via `-DSECURITY_ENABLED=ON`
-- Signed-binary **footer** carries the file length and 64-byte Ed25519 signature
-- Simple UART **CLI** (info / help / upload / jump)
-- **Vector-table remapping** to SRAM for correct interrupt delivery to the user application on Cortex-M0 (no VTOR)
 - **CMake** build system with optional security flag
 - Clean **serial abstraction layer** (function-pointer interface) — easy to swap UART implementation
 
@@ -128,7 +124,7 @@ static const uint8_t dsa_public_key[32] = {
 #endif
 ```
 
-The matching key pair and the signing tool are available at the **[Embedded-signing-tool](https://github.com/ALICHOUCHENE/Embedded-signing-tool)** repository.
+The signing tool is available at the **[Embedded-signing-tool](https://github.com/ALICHOUCHENE/Embedded-signing-tool)** repository.
 
 ---
 
@@ -147,23 +143,6 @@ int main(void) {
 For a production deployment, add a **pin-based or flag-based entry check** before the `bootloader_entry()` call.  
 Two common patterns:
 
-**Option A — GPIO pin held at reset:**
-```c
-// Enter bootloader only if BOOT pin is held low at reset
-if (HAL_GPIO_ReadPin(BOOT_GPIO_Port, BOOT_Pin) == GPIO_PIN_RESET) {
-    bootloader_entry();
-}
-bootloader_exit();   // otherwise jump straight to the application
-```
-
-**Option B — Persistent flag in a backup register:**
-```c
-if (RTC->BKP0R == BOOTLOADER_MAGIC) {
-    RTC->BKP0R = 0;
-    bootloader_entry();
-}
-bootloader_exit();
-```
 
 ---
 
@@ -240,73 +219,6 @@ Your application's startup code should **not** attempt to relocate the vector ta
 
 ---
 
-## Signing the Application Binary
-
-The **[Embedded-signing-tool](https://github.com/ALICHOUCHENE/Embedded-signing-tool)** is a host-side C utility that appends the 72-byte Ed25519 footer (magic + file length + 64-byte signature) that the bootloader expects.
-
-### 1. Build the signing tool
-
-```sh
-cd signing_tool
-mkdir build && cd build
-cmake ..
-make
-# produces: build/signing_tool
-```
-
-### 2. Sign the application binary
-
-On the **first run**, a fresh Ed25519 key pair is generated automatically from a `getrandom(2)` seed and saved to `keys/keys.txt`. Subsequent runs reuse the same keys.
-
-```sh
-./build/signing_tool sign app.bin
-```
-
-```
-binary file: app.bin
-Keys file found, read keys...
-Generating signed binary file
-```
-
-Output: `app.bin.sign` — the original binary with the 72-byte footer appended. This is the file to transfer via XMODEM.
-
-### 3. (Optional) Verify the signed binary on the host
-
-```sh
-./build/signing_tool verify app.bin.sign
-```
-
-```
-binary file: app.bin.sign
-Keys file found, read keys...
-Signature is valid
-```
-
-### 4. Extract the public key and update the bootloader
-
-The public key is stored as the second line of `keys/keys.txt` (64 lowercase hex characters = 32 bytes). Convert it to a C byte array and paste it into `Core/Inc/bootloader_signature.h`:
-
-```c
-#ifdef SECURITY_ENABLED
-static const uint8_t dsa_public_key[32] = {
-    0xAB, 0xCD, /* ... all 32 bytes from the second line of keys/keys.txt ... */
-};
-#endif
-```
-
-Then rebuild the bootloader with `-DSECURITY_ENABLED=ON`.
-
-> **Key security:** `keys/keys.txt` contains the **private key in plaintext**. Restrict its permissions and never commit it to version control:
-> ```sh
-> chmod 600 keys/keys.txt
-> echo "keys/keys.txt" >> .gitignore
-> ```
-> Regenerating the key pair (by deleting `keys/keys.txt`) invalidates all previously signed binaries.
-
-The original `app.bin` will be **rejected** by a bootloader built with `SECURITY_ENABLED=ON`.
-
----
-
 ## Build
 
 ### Requirements
@@ -320,13 +232,13 @@ The original `app.bin` will be **rejected** by a bootloader built with `SECURITY
 
 ### Build commands
 
-**Without signature verification (development/debug):**
+**Without signature verification:**
 ```sh
 cmake -B build -DSECURITY_ENABLED=OFF
 cmake --build build
 ```
 
-**With signature verification (production):**
+**With signature verification:**
 ```sh
 cmake -B build -DSECURITY_ENABLED=ON
 cmake --build build
@@ -372,7 +284,7 @@ STM32_Programmer_CLI -c port=SWD -w build/bootloader.bin 0x08000000 -v -rst
 5. In your terminal, start an XMODEM-CRC send of the (signed) binary:
    - **minicom:** `Ctrl-A S` → `xmodem` → select file
    - **lrzsz:** `sx --xmodem app_signed.bin > /dev/ttyUSB0 < /dev/ttyUSB0`
-   - **Tera Term:** `File → Transfer → XMODEM → Send` → select file, choose CRC
+   - **Tera Term:** `File → Transfer → XMODEM → Send` → select file
 
 6. Wait for the transfer to complete. If security is enabled, the bootloader prints the authentication result.
 
