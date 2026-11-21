@@ -60,6 +60,7 @@ set(CORE_SOURCES
     Core/Src/sysmem.c
     Core/Src/syscalls.c
     Core/Src/bootloader.c
+    Core/Src/cli.c
     Core/Src/main.c
     Core/Startup/startup_stm32f030cctx.S
 )

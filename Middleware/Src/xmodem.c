@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
   * @file    xmodem.c
-  * @brief   This file contains xmodem transfer protocol implementation
+  * @brief   This file contains xmodem transfer protocol implementation.
   ******************************************************************************
   * @attention
   *
@@ -16,19 +16,11 @@
   */
 
 #include <stdbool.h>
+#include "string.h"
 #include "stm32f0xx_hal.h"
 #include "serial.h"
 #include "xmodem.h"
-#include "string.h"
 #include "system.h"
-
-// XMODEM protocol control characters
-#define XMODEM_SOH    0x01  // Start of Header: marks the beginning of a 128-byte data packet
-#define XMODEM_DLE    0x10  // Data Link Escape: mainly used for escaping control characters
-#define XMODEM_EOT    0x04  // End of Transmission: indicates the sender has finished sending the file
-#define XMODEM_ACK    0x06  // Acknowledge: sent by receiver to confirm a successfully received packet
-#define XMODEM_NACK   0x15  // Not Acknowledge: sent by receiver to request retransmission of a corrupted packet
-#define XMODEM_CAN    0x18  // Cancel: used to abort the transfer; typically requires two consecutive CAN bytes
 
 #define XMODEM_DELAY_ACK_NACK			20	 		// 20 ms delay between
 #define XMODEM_INIT_DELAY				1000		// 1 second delay at start of transfer
@@ -83,30 +75,52 @@ static xmodem_ctx_t _xmodem_ctx;
 
 static void _serial_user_cb(void)
 {
-	size_t len;
+    size_t len;
 
-	// Data received over the serial interface
-	_xmodem_ctx.serial_interface->read(_xmodem_ctx.buffer + _xmodem_ctx.len, &len);
-	_xmodem_ctx.len += len;
+    // Read available data from the serial RX buffer
+    _xmodem_ctx.serial_interface->read(&_xmodem_ctx.buffer[_xmodem_ctx.len], &len);
+    _xmodem_ctx.len += len;
 
-	// Check if the first byte is SOH
-	if ((_xmodem_ctx.state == xmodem_state_initializing) || (_xmodem_ctx.state == xmodem_state_waiting)) {
-		if (_xmodem_ctx.buffer[0] == XMODEM_SOH) {
-			// The start of a new frame
-			_xmodem_ctx.state = xmodem_state_receiving;
-		} else if (_xmodem_ctx.buffer[0] == XMODEM_EOT) {
-			// File transfer completed
-			_xmodem_ctx.state = xmodem_state_completed;
-		} else if ((_xmodem_ctx.len >= 2) && (_xmodem_ctx.buffer[0] == XMODEM_CAN) && (_xmodem_ctx.buffer[1] == XMODEM_CAN)) {
-			// Transfer aborted by the sender
-			_xmodem_ctx.state = xmodem_state_aborted;
-		} else {
-			// An error occurred, abort the transfer
-			_xmodem_ctx.state = xmodem_state_aborting;
-		}
-	}
+    // Check the first byte when initializing or waiting for a packet
+    if ((_xmodem_ctx.state == xmodem_state_initializing) ||
+        (_xmodem_ctx.state == xmodem_state_waiting)) {
+
+        if (_xmodem_ctx.len == 0) {
+            return;
+        }
+
+        switch (_xmodem_ctx.buffer[0]) {
+
+        case XMODEM_SOH:
+            // The start of a new frame
+            _xmodem_ctx.state = xmodem_state_receiving;
+            break;
+
+        case XMODEM_EOT:
+            // File transfer completed
+            _xmodem_ctx.state = xmodem_state_completed;
+            break;
+
+        case XMODEM_CAN:
+            // Wait for the second CAN byte
+            if (_xmodem_ctx.len >= 2) {
+                if (_xmodem_ctx.buffer[1] == XMODEM_CAN) {
+                    // Transfer aborted by the sender
+                    _xmodem_ctx.state = xmodem_state_aborted;
+                } else {
+                    // Invalid sequence
+                    _xmodem_ctx.state = xmodem_state_aborting;
+                }
+            }
+            break;
+
+        default:
+            // An error occurred, abort the transfer
+            _xmodem_ctx.state = xmodem_state_aborting;
+            break;
+        }
+    }
 }
-
 static void _xmodem_send_ack(void)
 {
 	uint8_t ack =  XMODEM_ACK;
