@@ -26,7 +26,7 @@
 /*                outside this module.                                        */
 /******************************************************************************/
 
-static bool _flash_inetrface_erase_page(uint32_t paddress)
+static bool _flash_interface_erase_page(uint32_t paddress)
 {
 	FLASH_EraseInitTypeDef pEraseInit;
 	uint32_t PageError;
@@ -42,12 +42,6 @@ static bool _flash_inetrface_erase_page(uint32_t paddress)
 
 static bool _flash_interface_write_to_page(uint32_t paddress, uint32_t* data, size_t len)
 {
-	// Check length size
-	if(!len) {
-		// Nothing to do
-		return false;
-	}
-
 	// Write word starting from the page address
 	for (int i = 0; i <= len - 1; i++) {
 		if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, paddress, *data) != HAL_OK) {
@@ -75,13 +69,7 @@ bool flash_interface_write_page(uint8_t page, uint32_t* data, size_t len)
 	uint32_t paddress;
 
 	// Check page number
-	if (page >= FLASH_TOTAL_PAGE_COUNT) {
-		return false;
-	}
-
-	// Check length size
-	if(!len) {
-		// Nothing to do
+	if ((page > FLASH_TOTAL_PAGE_COUNT) || (page < 0)) {
 		return false;
 	}
 
@@ -99,7 +87,7 @@ bool flash_interface_write_page(uint8_t page, uint32_t* data, size_t len)
 	paddress = FLASH_MEMORY_BASE_ADDR + page * FLASH_PAGE_SIZE_BYTES;
 
 	// Erase Page
-	if (!_flash_inetrface_erase_page(paddress)) {
+	if (!_flash_interface_erase_page(paddress)) {
 		goto _error;
 	}
 
@@ -125,7 +113,7 @@ bool flash_interface_memory_move(uint8_t dst_page, uint8_t src_page)
 	uint32_t src_page_address;
 
 	// Check page number
-	if (dst_page >= FLASH_TOTAL_PAGE_COUNT) {
+	if ((dst_page > FLASH_TOTAL_PAGE_COUNT) || (dst_page < 0)) {
 		return false;
 	}
 
@@ -134,7 +122,7 @@ bool flash_interface_memory_move(uint8_t dst_page, uint8_t src_page)
 		return false;
 	}
 
-	// Compute destination and source page addressees
+	// Compute destination and source page addresses
 	dst_page_address = FLASH_MEMORY_BASE_ADDR + dst_page * FLASH_PAGE_SIZE_BYTES;
 	src_page_address = FLASH_MEMORY_BASE_ADDR + src_page * FLASH_PAGE_SIZE_BYTES;
 
@@ -144,7 +132,7 @@ bool flash_interface_memory_move(uint8_t dst_page, uint8_t src_page)
 	}
 
 	// Erase the destination page
-	if (!_flash_inetrface_erase_page(dst_page_address)) {
+	if (!_flash_interface_erase_page(dst_page_address)) {
 		// Fail to erase page
 		goto _error;
 	}
@@ -172,11 +160,11 @@ bool flash_interface_erase_page(uint8_t page)
 	uint32_t page_address;
 
 	// Check page number
-	if (page >= FLASH_TOTAL_PAGE_COUNT) {
+	if ((page > FLASH_TOTAL_PAGE_COUNT) || (page < 0)) {
 		return false;
 	}
 
-	// Compute destination and source page addressees
+	// Compute destination and source page addresses
 	page_address = FLASH_MEMORY_BASE_ADDR + page * FLASH_PAGE_SIZE_BYTES;
 
 	// Unlock the flash
@@ -185,7 +173,7 @@ bool flash_interface_erase_page(uint8_t page)
 	}
 
 	// Erase the page
-	if (!_flash_inetrface_erase_page(page_address)) {
+	if (!_flash_interface_erase_page(page_address)) {
 		// Fail to erase page
 		goto _error;
 	}

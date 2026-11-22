@@ -1,184 +1,40 @@
 # STM32F0 Secure Bootloader
 
-A lightweight, bare-metal **secure bootloader** for ARM Cortex-M0 MCUs, targeting the **STM32F030CCTx** (256 KB flash).  
-Firmware is transferred over UART using the **XMODEM-CRC** protocol into a dedicated staging area, optionally verified with an **Ed25519 digital signature** (via [Monocypher](https://monocypher.org/)), and only then copied into the application area before execution.
-
-Built with **CMake** and the **STM32 HAL**, the project is designed to be readable, portable to other STM32F0 variants, and easy to extend.
-
----
-
-## Table of Contents
-
-1. [Features](#features)
-2. [Project Structure](#project-structure)
-3. [Security — Ed25519 Signature Verification](#security--ed25519-signature-verification)
-4. [Bootloader Entry Logic](#bootloader-entry-logic)
-5. [CLI Commands](#cli-commands)
-6. [User Application Design](#user-application-design)
-7. [Build](#build)
-8. [Flashing the Bootloader](#flashing-the-bootloader)
-9. [Uploading a User Application](#uploading-a-user-application)
-
----
+A bare-metal secure UART bootloader for the STM32F030CCTx (Cortex-M0).
+Firmware is transferred using XMODEM-CRC. When security is enabled, the bootloader verifies the firmware's Ed25519 signature before installing it.
 
 ## Features
 
-- Targets **STM32F030CCTx** (Cortex-M0, 256 KB flash, 32 KB SRAM)
-- Fully **bare-metal**
-- Simple UART **CLI**
-- **XMODEM-CRC** firmware transfer over UART
-- Optional **Ed25519 signature verification** (Monocypher) enabled at compile time via `-DSECURITY_ENABLED=ON`
-- **CMake** build system with optional security flag
-- Clean **serial abstraction layer** (function-pointer interface) — easy to swap UART implementation
-
----
-
-## Project Structure
-
-```
-stm32f0-bootloader/
-├── Core/
-│   ├── Inc/
-│   │   ├── bootloader.h            # Bootloader API, memory-map macros
-│   │   └── bootloader_signature.h  # Footer structure, auth status codes,
-│   │                               #   Ed25519 public key (SECURITY_ENABLED)
-│   ├── Src/
-│   │   ├── main.c                  # System init → bootloader_entry()
-│   │   ├── bootloader.c            # CLI, XMODEM callbacks, signature verify,
-│   │   │                           #   staging-to-application move, jump
-│   │   └── system.c                # Clock / peripheral init (HAL)
-│   └── Startup/
-│       └── startup_stm32f030cctx.s # Reset handler, vector table
-│
-├── Middleware/
-│   ├── Inc/
-│   │   ├── flash.h                 # Flash erase/write/move API
-│   │   ├── xmodem.h                # XMODEM-CRC receiver API
-│   │   └── serial.h                # Serial abstraction (function-pointer interface)
-│   └── Src/
-│       ├── flash.c                 # HAL_FLASHEx_Erase + HAL_FLASH_Program wrappers
-│       ├── xmodem.c                # XMODEM-CRC state machine
-│       └── serial.c                # USART1 ISR-driven RX, HAL TX
-│
-├── Crypto/
-│   ├── Inc/
-│   │   └── crypto_dsa.h            # Ed25519 verify wrapper
-│   ├── Src/
-│   │   └── crypto_dsa.c            # Calls Monocypher crypto_eddsa_check()
-│   └── Libraries/
-│       └── Src/
-│           └── monocypher.c        # Vendored Monocypher library
-│
-├── STM32F030CCTX_FLASH.ld          # Linker script
-└── CMakeLists.txt
-```
-
----
+* STM32F030CCTx support (256 KB flash, 32 KB SRAM)
+* UART command-line interface
+* XMODEM-CRC firmware transfer
+* Optional Ed25519 signature verification
+* CMake build system
 
 ## Security — Ed25519 Signature Verification
 
-When built with `-DSECURITY_ENABLED=ON`, the bootloader **refuses to install any unsigned or invalidly signed binary**.
+Build with `-DSECURITY_ENABLED=ON` to enable signature verification.
 
-### How it works
+When enabled, the bootloader rejects firmware with a missing or invalid signature. The signature is checked against the public key configured in `Core/Inc/bootloader_signature.h`.
 
-1. The host signing tool appends a **footer** to the firmware binary before transfer:
+The signing tool is available here: [Embedded-signing-tool](https://github.com/ALICHOUCHENE/Embedded-signing-tool)
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                  Firmware binary (N bytes)              │
-├──────────┬──────────────┬───────────────────────────────┤
-│  magic   │ file_length  │       Ed25519 signature       │
-│ 4 bytes  │   4 bytes    │         64 bytes              │
-│0x424F4F54│      N       │  over binary[0..N-1]          │
-└──────────┴──────────────┴───────────────────────────────┘
-         ▲
-   "BOOT" in ASCII — identifies the footer
-```
+Use the signing tool to generate keys and sign the firmware binary before uploading it. The matching public key must be configured in the bootloader.
 
-2. XMODEM-CRC delivers the signed binary (firmware + footer) to the staging area in flash.
-3. On transfer completion, the bootloader:
-   - Strips XMODEM's trailing `0x1A` padding bytes.
-   - Scans backward to locate the footer by its magic number (`0x424F4F54`).
-   - Checks that the declared `file_length` matches the found binary size.
-   - Calls `crypto_eddsa_check()` (Monocypher Ed25519) against the 32-byte public key embedded in `bootloader_signature.h`.
-4. Only on `authentication_status_success` is the binary moved from staging to the application area.
+**Keep the private key secure.** Do not commit it to the repository or include it in the device firmware. Only the public key should be stored in the bootloader. Anyone with the private key can create firmware that passes the signature check.
 
-### Authentication status codes
-
-| Status | Meaning |
-|---|---|
-| `authentication_status_success` | Signature valid — binary promoted |
-| `authentication_status_footer_not_found` | Footer magic absent |
-| `authentication_status_file_length_mismatch` | Declared length ≠ actual length |
-| `authentication_status_invalid_signature` | Ed25519 verification failed |
-
-### Configuring the public key
-
-Replace the placeholder bytes in `Core/Inc/bootloader_signature.h`:
-
-```c
-#ifdef SECURITY_ENABLED
-static const uint8_t dsa_public_key[32] = {
-    0x96, 0xf3, /* ... 30 more bytes from your key pair ... */
-};
-#endif
-```
-
-The signing tool is available at the **[Embedded-signing-tool](https://github.com/ALICHOUCHENE/Embedded-signing-tool)** repository.
-
----
-
-## Bootloader Entry Logic
-
-Currently, `main.c` calls `bootloader_entry()` unconditionally on every reset:
-
-```c
-int main(void) {
-    system_init();
-    HAL_Delay(500);
-    bootloader_entry();   // always enters bootloader
-}
-```
-
-For a production deployment, add a **pin-based or flag-based entry check** before the `bootloader_entry()` call.  
-Two common patterns:
-
-
----
+Signature verification checks firmware authenticity and integrity. It does not encrypt the firmware or guarantee that the signed firmware is safe.
 
 ## CLI Commands
 
-After reset the bootloader prints a welcome banner over UART (115200 baud, 8N1) and waits for commands at the `->` prompt.
+The bootloader uses UART at 115200 baud, 8N1.
 
-| Command | Description |
-|---|---|
-| `info` | Print MCU architecture, core, device, and flash size |
-| `help` | List available commands |
-| `upload` | Erase staging area and start XMODEM-CRC receive. Sends `C` to signal CRC mode. Aborts automatically after ~2 minutes of inactivity. |
-| `jump` | Validate the application vector table, copy it to SRAM, and branch to the application reset handler |
-
-Example session:
-```
-================================================
-        STM32 Bootloader v1.0.0
-================================================
--> help
-=================== Bootloader Command Menu ===================
-Available commands:
-  info     : Display system information
-  help     : Display bootloader commands
-  upload   : Upload a new application binary to flash using XMODEM
-  jump     : Jumping to the user application
--> upload
-Starting binary upload via XMODEM...
-CCCC...
-[transfer completes]
-Signed binary authenticated!
--> jump
-Jump to application...
-```
-
----
+Command  | Description
+--- | ---
+`info`  | Display MCU information
+`help`  | List available commands
+`upload`  | Start an XMODEM-CRC firmware upload
+`jump`  | Start the user application
 
 ## User Application Design
 
@@ -186,112 +42,86 @@ Jump to application...
 
 The user application must be linked to start at `0x0800A000` and must leave the first `0xC0` bytes of SRAM free for the bootloader to copy the application vector table into.
 
-Example linker script for the user application:
+Use the application linker script with the following memory layout:
 
-```ld
-/* Vector table: 48 entries × 4 bytes = 0xC0 */
-_Vector_Table_Size = 0xC0;
+    /* Vector table: 48 entries × 4 bytes = 0xC0 */
+    _Vector_Table_Size = 0xC0;
 
-MEMORY
-{
-  RAM         (xrw) : ORIGIN = 0x200000C0, LENGTH = 32K - _Vector_Table_Size
-  FLASH       (rx)  : ORIGIN = 0x0800A000, LENGTH = 216K
-  BOOTLOADER  (rx)  : ORIGIN = 0x08000000, LENGTH = 40K
-}
-```
+    MEMORY
+    {
+      RAM         (xrw) : ORIGIN = 0x200000C0, LENGTH = 32K - _Vector_Table_Size
+      FLASH       (rx)  : ORIGIN = 0x0800A000, LENGTH = 216K
+      BOOTLOADER  (rx)  : ORIGIN = 0x08000000, LENGTH = 40K
+    }
 
-> The `BOOTLOADER` region is declared read-only — the linker uses it only to prevent the application from accidentally overlapping the bootloader.
+The `BOOTLOADER` region is declared read-only. It prevents the application from being linked over the bootloader area.
 
-### Vector table remapping on Cortex-M0
+### Vector table
 
-Cortex-M0 does **not** have a `VTOR` (Vector Table Offset Register), so the CPU always fetches interrupt vectors from address `0x00000000`, which is aliased to SRAM via the boot-mode pin.
+The STM32F030 uses a Cortex-M0 core and does not have a `VTOR` register. The bootloader copies the application vector table to the reserved SRAM area before jumping to the application.
 
-The bootloader handles this transparently before jumping:
-
-```
-1. memcpy(0x20000000, 0x0800A000, 0xC0)   ← copy app vectors into reserved SRAM
-2. Disable all interrupts
-3. Set MSP ← app_stack_pointer  (first word at 0x0800A000)
-4. Branch to app_reset_handler  (second word at 0x0800A000)
-```
-
-Your application's startup code should **not** attempt to relocate the vector table — the bootloader has already done it.
-
----
+The application's startup code should not relocate the vector table again.
 
 ## Build
 
 ### Requirements
 
-| Tool | Version |
-|---|---|
-| `arm-none-eabi-gcc` | ≥ 10 |
-| `cmake` | ≥ 3.15 |
-| `make` | any recent |
-| `st-flash` or STM32CubeProgrammer | for flashing |
+Tool  | Version
+--- | ---
+`arm-none-eabi-gcc`  | ≥ 10
+`cmake`  | ≥ 3.15
+`make`  | any recent
+`st-flash` or STM32CubeProgrammer  | for flashing
 
 ### Build commands
 
-**Without signature verification:**
-```sh
-cmake -B build -DSECURITY_ENABLED=OFF
-cmake --build build
-```
+Without signature verification:
 
-**With signature verification:**
-```sh
-cmake -B build -DSECURITY_ENABLED=ON
-cmake --build build
-```
+    cmake -B build -DSECURITY_ENABLED=OFF
+    cmake --build build
+
+With signature verification:
+
+    cmake -B build -DSECURITY_ENABLED=ON
+    cmake --build build
 
 The build produces `build/bootloader.bin` and `build/bootloader.elf`.
-
-Compiler flags used: `-mcpu=cortex-m0 -mthumb -Os -ffreestanding -ffunction-sections -fdata-sections`  
-No standard C library is linked (`-lgcc` only).
-
----
 
 ## Flashing the Bootloader
 
 Using `st-flash` with an ST-Link programmer:
 
-```sh
-st-flash write build/bootloader.bin 0x08000000
-```
+    st-flash write build/bootloader.bin 0x08000000
 
 Using STM32CubeProgrammer CLI:
 
-```sh
-STM32_Programmer_CLI -c port=SWD -w build/bootloader.bin 0x08000000 -v -rst
-```
-
----
+    STM32_Programmer_CLI -c port=SWD -w build/bootloader.bin 0x08000000 -v -rst
 
 ## Uploading a User Application
 
 1. Connect the board's UART TX/RX pins to a USB-UART adapter.
 
-2. Open a serial terminal at **115200 baud, 8N1** with local echo enabled:
-   ```sh
-   sudo minicom -b 115200 -D /dev/ttyUSB0
-   # or on Windows: Tera Term → Setup → Serial port → 115200 8N1, local echo ON
-   ```
+2. Open Tera Term or Minicom at 115200 baud, 8N1, and enable **local echo**.
 
-3. Reset the board. The bootloader banner appears. Press **Enter** to see the `->` prompt.
+       sudo minicom -b 115200 -D /dev/ttyUSB0
 
-4. Type `upload` and press **Enter**. The bootloader sends `C` characters to indicate it is ready for XMODEM-CRC.
+   In Tera Term, configure this under `Setup → Serial port → Local echo`.
 
-5. In your terminal, start an XMODEM-CRC send of the (signed) binary:
-   - **minicom:** `Ctrl-A S` → `xmodem` → select file
-   - **lrzsz:** `sx --xmodem app_signed.bin > /dev/ttyUSB0 < /dev/ttyUSB0`
-   - **Tera Term:** `File → Transfer → XMODEM → Send` → select file
+3. Reset the board. The bootloader banner appears. Press Enter to see the `->` prompt.
 
-6. Wait for the transfer to complete. If security is enabled, the bootloader prints the authentication result.
+4. Type `upload` and press Enter. The bootloader sends `C` characters when it is ready for XMODEM-CRC.
 
-7. Type `jump` and press **Enter** to run the uploaded application.
+5. Start an XMODEM-CRC send from the terminal and select the firmware binary.
 
----
+       * minicom: `Ctrl-A S` → `xmodem` → select the file
+       * Tera Term: `File → Transfer → XMODEM → Send` → select the file
+
+   If security is enabled, send the binary produced by the signing tool.
+
+6. Wait for the transfer to finish. The bootloader reports the authentication result when signature verification is enabled.
+
+7. Type `jump` and press Enter to run the application.
 
 ## License
 
-Copyright © 2026 Ali Chouchene. See `LICENSE` for details.
+MIT. See `LICENSE` for details.
